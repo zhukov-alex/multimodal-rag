@@ -1,0 +1,19 @@
+{
+  "query": "What are the benefits of using RAG architecture for multimodal applications?",
+  "ask": null,
+  "image_path": null,
+  "modality_top_k": { "text": 5, "image": 0 },
+  "system_prompt": "You are an expert assistant on machine learning architectures.",
+  "params": {
+    "temperature": 0.7,
+    "top_p": 1.0,
+    "max_tokens": 512,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "stop": ["\n\n"],
+    "logit_bias": {
+      "198": -1.0
+    },
+    "seed": 42
+  }
+}
