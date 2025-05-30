@@ -19,6 +19,7 @@ class EmbedderService:
     ):
         self.text_embedder = text_embedder
         self.image_embedder = image_embedder
+        self.semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENCY)
         self.batch_size = batch_size
 
     @property
@@ -69,7 +70,7 @@ class EmbedderService:
         if not self.image_embedder:
             raise RuntimeError("No image embedder provided")
 
-        path = doc.source.source_path
+        path = doc.source.tmp_path
         logger.debug("Embedding image document", extra={"path": path})
 
         image_bytes = await load_image_bytes_from_source(path)
@@ -124,13 +125,11 @@ class EmbedderService:
 
         logger.debug("Batching text chunks", extra={"total_chunks": len(contents), "batches": len(batches)})
 
-        semaphore = asyncio.Semaphore(DEFAULT_MAX_CONCURRENCY)
-
         async def embed_with_limit(batch):
-            async with semaphore:
+            async with self.semaphore:
                 return await self.text_embedder.embed_texts(batch)
 
-        tasks = [embed_with_limit(batch) for batch in batches]
+        tasks = [asyncio.create_task(embed_with_limit(batch)) for batch in batches]
         results = await asyncio.gather(*tasks)
 
         embeddings = []

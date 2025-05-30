@@ -45,6 +45,24 @@ class StoragingConfig(BaseModel):
     weaviate: WeaviateConnectionConfig | None = None
 
 
+class S3AssetConfig(BaseModel):
+    bucket: str
+    region: str
+    overwrite: bool = False
+    endpoint_url: str | None = None
+
+
+class LocalAssetConfig(BaseModel):
+    root_dir: str
+    overwrite: bool = False
+
+
+class AssetStoreConfig(BaseModel):
+    type: Literal["s3", "local"]
+    s3: S3AssetConfig | None = None
+    local: LocalAssetConfig | None = None
+
+
 class TranscribingConfig(BaseModel):
     type: Literal["replicate", "custom"]
     model: str
@@ -61,6 +79,7 @@ class IndexingConfig(BaseModel):
     transcribing: TranscribingConfig | None = None
     captioning: CaptioningConfig | None = None
     storaging: StoragingConfig
+    asset_store: AssetStoreConfig | None = None
 
 
 # --- RAG (retrieve + generate) config ---

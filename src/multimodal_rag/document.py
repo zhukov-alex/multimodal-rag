@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
 
 
 class Chunk(BaseModel):
@@ -13,23 +12,24 @@ class ScoredChunk(BaseModel):
 
 
 class ChunkGroup(BaseModel):
-    chunks: List[Chunk]
+    chunks: list[Chunk]
     embedder_name: str
     modality: str  # text, image, etc.
 
 
 class SourceConfig(BaseModel):
-    source_path: str
+    source_path: str | None = None
     type: str
     loader: str
+    tmp_path: str | None = Field(default=None, exclude=True, repr=False)
 
 
 class MetaConfig(BaseModel):
-    filename: Optional[str] = None
-    size_bytes: Optional[int] = None
-    last_modified: Optional[int] = None
-    fingerprint: Optional[str] = None
-    mime: Optional[str] = None
+    filename: str
+    size_bytes: int
+    last_modified: int
+    fingerprint: str
+    mime: str
 
 
 class ScoredItem(BaseModel):
@@ -39,8 +39,8 @@ class ScoredItem(BaseModel):
     modality: str
     score: float
     source_path: str
-    caption: Optional[str] = None
-    image_base64: Optional[str] = None
+    caption: str | None = None
+    image_base64: str | None = None
     metadata: MetaConfig
 
 
@@ -48,10 +48,10 @@ class Document(BaseModel):
     uuid: str
     content: str
     lang: str
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     source: SourceConfig
     metadata: MetaConfig
-    chunk_groups: List[ChunkGroup] = Field(default_factory=list)
+    chunk_groups: list[ChunkGroup] = Field(default_factory=list)
 
     def to_json(self) -> dict:
         return {

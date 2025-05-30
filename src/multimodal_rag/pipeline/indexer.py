@@ -4,11 +4,14 @@ from multimodal_rag.config.factory import (
     create_captioner,
     create_text_embedder,
     create_image_embedder,
+    create_asset_store,
     create_storage_client,
 )
 from multimodal_rag.loader.reader.extension_based import ExtensionBasedReader
 from multimodal_rag.loader.reader.registry import ReaderRegistry
-from multimodal_rag.loader.service import LoaderService
+from multimodal_rag.loader.resolver import SourceResolver
+from multimodal_rag.loader.service import RecursiveLoaderService
+from multimodal_rag.asset_store.service import AssetStorageService
 from multimodal_rag.chunker.registry import SplitterRegistry
 from multimodal_rag.chunker.service import ChunkerService
 from multimodal_rag.embedder.service import EmbedderService
@@ -24,7 +27,8 @@ async def run_index_pipeline(source: str, config: IndexingConfig, project_id: st
     registry = ReaderRegistry()
     registry.register(extensions=None, reader=default_reader)
 
-    loader_service = LoaderService(source=source, registry=registry)
+    resolver = SourceResolver(registry=registry)
+    recursive_loader = RecursiveLoaderService(resolver)
 
     splitter_registry = SplitterRegistry(config.chunking)
     chunker_service = ChunkerService(registry=splitter_registry)
@@ -40,17 +44,32 @@ async def run_index_pipeline(source: str, config: IndexingConfig, project_id: st
     storage = create_storage_client(config.storaging)
     indexer = StorageIndexerService(storage, config, project_id)
 
-    async with log_duration("load_documents"):
-        docs = await loader_service.load()
+    asset_store = create_asset_store(config.asset_store) if config.asset_store else None
+    asset_storage_service = (
+        AssetStorageService(store=asset_store) if asset_store else None
+    )
 
-    async with log_duration("chunk_documents", count=len(docs)):
-        await chunker_service.chunk_documents(docs)
+    docs = []
+    try:
+        async with log_duration("load_documents"):
+            docs = await recursive_loader.load(source)
 
-    async with log_duration("embed_documents"):
-        await embedder_service.embed_documents(docs)
+        if asset_storage_service:
+            async with log_duration("store_documents"):
+                await asset_storage_service.store_documents(project_id, docs)
 
-    async with log_duration("ensure_collections"):
-        collections = await indexer.ensure_collections_exist(docs)
+        async with log_duration("chunk_documents", count=len(docs)):
+            await chunker_service.chunk_documents(docs)
 
-    async with log_duration("import_documents", collections=len(collections), count=len(docs)):
-        await indexer.import_documents(docs, collections)
+        async with log_duration("embed_documents"):
+            await embedder_service.embed_documents(docs)
+
+        async with log_duration("ensure_collections"):
+            collections = await indexer.ensure_collections_exist(docs)
+
+        async with log_duration("import_documents", collections=len(collections), count=len(docs)):
+            await indexer.import_documents(docs, collections)
+
+    finally:
+        if asset_storage_service and docs:
+            await asset_storage_service.cleanup_tmp_files(docs)

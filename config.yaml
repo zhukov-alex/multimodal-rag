@@ -83,3 +83,12 @@ reranking:
   supported_modes:
     - text
     - images
+
+
+asset_store:
+  type: s3
+  s3:
+    bucket: bucket-name
+    region: eu-central-1
+    endpoint_url: http://localhost:9000
+    overwrite: true

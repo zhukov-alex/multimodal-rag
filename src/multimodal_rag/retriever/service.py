@@ -150,7 +150,10 @@ class MultiModalRetriever:
         return results[:request.top_k]
 
     async def _load_images(self, items: list[ScoredItem]) -> None:
-        image_items = [item for item in items if item.modality == "image" and not item.image_base64]
+        image_items = [
+            item for item in items
+            if item.modality == "image" and not item.image_base64 and item.source_path
+        ]
         image_tasks = {item.doc_uuid: load_image_base64(item.source_path) for item in image_items}
 
         if not image_tasks:

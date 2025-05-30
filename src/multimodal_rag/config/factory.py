@@ -4,6 +4,7 @@ from multimodal_rag.config.schema import (
     TranscribingConfig,
     CaptioningConfig,
     StoragingConfig,
+    AssetStoreConfig,
     RerankerConfig,
     GenerationConfig,
 )
@@ -35,6 +36,9 @@ from multimodal_rag.reranker.types import Reranker
 from multimodal_rag.storage.weaviate import WeaviateClient
 from multimodal_rag.storage.types import StorageClient
 
+from multimodal_rag.asset_store.local import LocalAssetStore
+from multimodal_rag.asset_store.s3 import S3AssetStore
+from multimodal_rag.asset_store.types import AssetStore
 
 TEXT_EMBEDDER_MAPPING = {
     "replicate": ReplicateTextEmbedder,
@@ -77,6 +81,11 @@ RERANKER_MAPPING = {
     "custom": CustomReranker,
 }
 
+ASSET_STORE_CLIENTS = {
+    "local": LocalAssetStore,
+    "s3": S3AssetStore,
+}
+
 
 def create_transcriber(config: TranscribingConfig) -> AudioTranscriber:
     transcriber_class = TRANSCRIBER_MAPPING.get(config.type)
@@ -110,7 +119,15 @@ def create_storage_client(config: StoragingConfig) -> StorageClient:
     client_class = STORAGE_CLIENTS.get(config.type)
     if not client_class:
         raise ValueError(f"Unknown storage type: {config.type}")
-    return client_class(config.get_client_config())
+    return client_class(getattr(config, config.type))
+
+
+def create_asset_store(config: AssetStoreConfig) -> AssetStore:
+    store_class = ASSET_STORE_CLIENTS.get(config.type)
+    if not store_class:
+        raise ValueError(f"Unknown asset store type: {config.type}")
+
+    return store_class(getattr(config, config.type))
 
 
 def create_reranker(config: RerankerConfig) -> Reranker:
