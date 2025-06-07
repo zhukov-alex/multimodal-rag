@@ -1,11 +1,11 @@
 import asyncio
-import tempfile
 from pathlib import Path
 
 from multimodal_rag.constants import KNOWN_BUT_UNSUPPORTED
 from multimodal_rag.log_config import logger
 from multimodal_rag.loader.reader.registry import ReaderRegistry
 from multimodal_rag.loader.types import DocumentLoader, LoadResult
+from multimodal_rag.utils.temp_dirs import make_tmp_dir
 
 
 class ArchiveLoader(DocumentLoader):
@@ -22,11 +22,12 @@ class ArchiveLoader(DocumentLoader):
         self.show_progress = show_progress
 
     async def load(self, source: str, _: str | None = None) -> LoadResult:
-        extracted_dir = tempfile.mkdtemp()
-        logger.info("Extracting archive", extra={"path": source, "destination": extracted_dir})
-        await asyncio.to_thread(self._extract, Path(source), Path(extracted_dir))
+        tmp_path = make_tmp_dir()
+        tmp_path_str = str(tmp_path)
+        logger.info("Extracting archive", extra={"path": source, "destination": tmp_path_str})
+        await asyncio.to_thread(self._extract, Path(source), tmp_path)
 
-        return LoadResult(documents=[], next_sources=[extracted_dir])
+        return LoadResult(documents=[], next_sources=[tmp_path_str])
 
     def _extract(self, arc_path: Path, target_path: Path) -> None:
         suffix = arc_path.suffix.lower()

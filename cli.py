@@ -3,6 +3,8 @@ import asyncio
 import yaml
 from pathlib import Path
 from pydantic import ValidationError
+from dotenv import load_dotenv
+load_dotenv()
 
 from multimodal_rag.pipeline.indexer import run_index_pipeline
 from multimodal_rag.pipeline.rag import run_rag_pipeline, RAGRequest

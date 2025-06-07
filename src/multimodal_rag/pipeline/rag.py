@@ -6,11 +6,13 @@ from multimodal_rag.config.factory import (
     create_text_embedder,
     create_image_embedder,
     create_storage_client,
+    create_asset_store,
     create_reranker,
     create_generator,
     parse_llm_params,
 )
 from multimodal_rag.embedder.service import EmbedderService
+from multimodal_rag.asset_store.reader import AssetReaderService
 from multimodal_rag.retriever.service import MultiModalRetriever
 from multimodal_rag.retriever.types import SearchByText, SearchByImage
 from multimodal_rag.generator.service import GeneratorService
@@ -45,9 +47,20 @@ async def run_rag_pipeline(
         batch_size=config.embedding.batch_size or 64,
     )
 
+    stores = {
+        name: create_asset_store(store_config)
+        for name, store_config in config.items()
+    }
+    asset_reader = AssetReaderService(stores=stores)
+
     storage = create_storage_client(config.storaging)
     reranker = create_reranker(config.reranking) if config.reranking else None
-    retriever = MultiModalRetriever(embedder=embedder_service, storage=storage, reranker=reranker)
+    retriever = MultiModalRetriever(
+        embedder=embedder_service,
+        storage=storage,
+        asset_reader=asset_reader,
+        reranker=reranker
+    )
     generator: Generator = create_generator(config.generation)
     generator_service = GeneratorService(generator)
 

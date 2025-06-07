@@ -1,9 +1,10 @@
 import asyncio
-from pathlib import Path
 import json
 import mimetypes
 import chardet
 import hashlib
+import re
+from pathlib import Path
 from uuid import uuid4
 
 from langdetect import detect, LangDetectException
@@ -13,7 +14,7 @@ from multimodal_rag.loader.reader.types import FileReader
 from multimodal_rag.preprocessor.captioner.types import ImageCaptioner
 from multimodal_rag.preprocessor.transcriber.types import AudioTranscriber
 from multimodal_rag.log_config import logger
-from multimodal_rag.utils.loader import load_image_bytes_from_source, load_file_from_path
+from multimodal_rag.utils.loader import load_image_bytes, load_file
 from multimodal_rag.utils.timing import log_duration
 
 LANG_EXT = {
@@ -40,8 +41,6 @@ LANG_EXT = {
     ".ps1": "powershell",
     ".tex": "latex",
     ".rst": "rst",
-    ".md": "markdown",
-    ".html": "html",
     ".cob": "cobol",
 }
 
@@ -109,9 +108,9 @@ class ExtensionBasedReader(FileReader):
         fingerprint = await self._hash_file(path)
 
         source_config = SourceConfig(
-            tmp_path=path_str,
-            loader="extension_based",
-            type=content_type,
+            tmp_uri=path_str,
+            file_reader="extension_based",
+            parsed_format=content_type,
         )
 
         meta_config = MetaConfig(
@@ -138,7 +137,7 @@ class ExtensionBasedReader(FileReader):
             return ""
         try:
             async with log_duration("caption_image", path=path):
-                image_bytes = await load_image_bytes_from_source(path)
+                image_bytes = await load_image_bytes(path)
                 captions = await self.captioner.generate_captions([image_bytes])
                 return captions[0] if captions else ""
         except Exception as e:
@@ -151,7 +150,7 @@ class ExtensionBasedReader(FileReader):
             return ""
         try:
             async with log_duration("transcribe_audio", path=path):
-                audio_bytes = await load_file_from_path(path)
+                audio_bytes = await load_file(path)
                 return await self.transcriber.transcribe(audio_bytes, mime)
         except Exception as e:
             logger.exception("Failed to transcribe audio", extra={"file": path, "error": str(e)})
@@ -172,9 +171,29 @@ class ExtensionBasedReader(FileReader):
             from markdownify import markdownify as md
         except ImportError:
             raise ImportError("markdownify is required to convert HTML.")
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            raise ImportError("beautifulsoup4 (bs4) is required to clean up HTML.")
+
         html = await self._read_text(path)
+
+        def to_markdown(html: str) -> str:
+            soup = BeautifulSoup(html, "html.parser")
+
+            for tag in soup.select("nav, header, footer, aside, .sr-only, .tooltipped, .octicon, script, style"):
+                tag.decompose()
+
+            content = soup.select_one("article.markdown-body") or soup.find("body")
+            markdown = md(str(content))
+            markdown = re.sub(r'\n{3,}', '\n\n', markdown)
+            markdown = "\n".join(line for line in markdown.splitlines() if line.strip())
+
+            return markdown.strip()
+
         async with log_duration("read_html", path=path):
-            return await asyncio.to_thread(md, html)
+            return await asyncio.to_thread(to_markdown, html)
 
     async def _read_pdf(self, path: str) -> str:
         try:

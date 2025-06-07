@@ -1,9 +1,7 @@
 from pydantic import BaseModel, Field
 
-from multimodal_rag.generator.types import LLMQueryParams
 
-
-class LlamaCppParams(BaseModel, LLMQueryParams):
+class LlamaCppParams(BaseModel):
     temperature: float = Field(0.0, ge=0.0, le=2.0, description="Controls randomness in output")
     top_p: float = Field(1.0, ge=0.0, le=1.0, description="Top-p nucleus sampling")
     top_k: int = Field(40, ge=0, description="Top-k sampling limit (0 = disable)")

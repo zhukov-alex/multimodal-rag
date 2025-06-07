@@ -19,7 +19,7 @@ class StorageIndexerService:
     async def ensure_collections_exist(
         self, docs: List[Document]
     ) -> dict[str, Union[str, List[str]]]:
-        used_models = extract_used_models(self.config, docs)
+        used_models = extract_used_model_dims(self.config, docs)
 
         doc_collection = await self.storage.create_document_collection(self.project_id)
         logger.info("Ensured document collection", extra={"collection": doc_collection})
@@ -122,25 +122,30 @@ def get_embedding_dim(doc: Document, modality: str) -> int | None:
     return len(first.embedding) if first else None
 
 
-def extract_used_models(
-    config: IndexingConfig, docs: List[Document]
-) -> dict[str, int]:
+def extract_used_model_dims(config: IndexingConfig, docs: list[Document]) -> dict[str, int]:
+    """
+    Extracts embedding dimensions for configured models (text/image),
+    based on the actual embeddings present in the document chunks.
+    """
+
     used: dict[str, int] = {}
     txt_model = config.embedding.text.model
     img_model = config.embedding.image.model
 
     for doc in docs:
-        if doc.source.type == "text" and txt_model not in used:
+        modality = doc.source.get_modality()
+
+        if modality == "text" and txt_model not in used:
             dim = get_embedding_dim(doc, "text")
             if dim:
                 used[txt_model] = dim
 
-        elif doc.source.type == "image" and img_model not in used:
+        elif modality == "image" and img_model not in used:
             dim = get_embedding_dim(doc, "image")
             if dim:
                 used[img_model] = dim
 
-        if len(used) == 2:
+        if len(used) >= len({txt_model, img_model}):
             break
 
     return used

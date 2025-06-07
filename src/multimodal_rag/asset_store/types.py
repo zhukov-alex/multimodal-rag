@@ -9,6 +9,10 @@ class AssetStore(Protocol):
     Interface for persistent storage backends.
     """
 
+    async def ensure_storage(self, project_id: str) -> None:
+        """Ensure project-level storage exists (bucket, collection, etc.)"""
+        ...
+
     async def store(self, project_id: str, tmp_path: Path, meta: MetaConfig) -> str:
         """
         Persist the given file to the store and return its storage URI.
@@ -21,4 +25,7 @@ class AssetStore(Protocol):
         Returns:
             URI string pointing to the stored file.
         """
+        ...
+
+    async def read(self, uri: str) -> bytes:
         ...

@@ -1,7 +1,6 @@
 import aiohttp
 import asyncio
 import os
-import tempfile
 from pathlib import Path
 from base64 import b64decode
 from aiohttp import ClientError
@@ -12,6 +11,7 @@ from multimodal_rag.loader.reader.registry import ReaderRegistry
 from multimodal_rag.loader.types import DocumentLoader, LoadResult
 from multimodal_rag.utils.retry import backoff
 from multimodal_rag.log_config import logger
+from multimodal_rag.utils.temp_dirs import make_tmp_dir
 
 try:
     from tqdm.asyncio import tqdm_asyncio as tqdm
@@ -42,7 +42,7 @@ class GitHubRepoLoader(DocumentLoader):
         info = parse_github_url(source)
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
-        tmp_path = Path(tempfile.mkdtemp())
+        tmp_path = make_tmp_dir()
 
         async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
             if not info.is_directory:

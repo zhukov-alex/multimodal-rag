@@ -1,6 +1,9 @@
-from typing import Protocol, Literal, AsyncGenerator
+from typing import Protocol, Literal, AsyncGenerator, Union
 from pydantic import BaseModel
 from multimodal_rag.document import ScoredItem
+from multimodal_rag.generator.params.llamacpp import LlamaCppParams
+from multimodal_rag.generator.params.ollama import OllamaParams
+from multimodal_rag.generator.params.openai import OpenAIParams
 
 
 class LLMQueryParams(Protocol):
@@ -22,7 +25,7 @@ class GenerateRequest(BaseModel):
     context_docs: list[ScoredItem]
     system_prompt: str | None = None
     history: list[ChatMessage] = []
-    params: LLMQueryParams
+    params: Union[OllamaParams, LlamaCppParams, OpenAIParams]
 
 
 class Generator(Protocol):

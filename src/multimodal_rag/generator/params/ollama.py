@@ -1,9 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Any
-from multimodal_rag.generator.types import LLMQueryParams
 
 
-class OllamaParams(BaseModel, LLMQueryParams):
+class OllamaParams(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=2.0, description="Controls randomness in output")
     top_p: float = Field(1.0, ge=0.0, le=1.0, description="Top-p nucleus sampling")
     num_predict: int = Field(512, ge=1, description="Maximum tokens to generate")

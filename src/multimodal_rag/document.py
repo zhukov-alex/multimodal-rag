@@ -18,10 +18,19 @@ class ChunkGroup(BaseModel):
 
 
 class SourceConfig(BaseModel):
-    source_path: str | None = None
-    type: str
-    loader: str
-    tmp_path: str | None = Field(default=None, exclude=True, repr=False)
+    file_reader: str
+    parsed_format: str  # text, markdown, json, code, image, blob, etc.
+    storage_type: str | None = None  # s3, local, etc.
+    asset_uri: str | None = None
+    tmp_uri: str | None = Field(default=None, exclude=True, repr=False)
+
+    def get_modality(self) -> str:
+        if self.parsed_format == "image":
+            return "image"
+        elif self.parsed_format == "blob":
+            return "blob"
+        else:
+            return "text"
 
 
 class MetaConfig(BaseModel):
@@ -38,7 +47,8 @@ class ScoredItem(BaseModel):
     content: str
     modality: str
     score: float
-    source_path: str
+    asset_storage: str | None = None
+    asset_uri: str | None = None
     caption: str | None = None
     image_base64: str | None = None
     metadata: MetaConfig
@@ -59,11 +69,11 @@ class Document(BaseModel):
             "tags": self.tags,
             "lang": self.lang,
             "content": self.content,
-            "source": self.source.dict(),
-            "metadata": self.metadata.dict(),
+            "source": self.source.model_dump(),
+            "metadata": self.metadata.model_dump(),
             "chunk_groups": [
                 {
-                    "chunks": [chunk.dict() for chunk in group.chunks],
+                    "chunks": [chunk.model_dump() for chunk in group.chunks],
                     "embedder_name": group.embedder_name,
                     "modality": group.modality,
                 }

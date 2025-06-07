@@ -92,11 +92,12 @@ class WeaviateClient(StorageClient):
             "class": collection_name,
             "vectorizer": "none",
             "properties": [
-                {"name": "filename", "dataType": ["text"]},
-                {"name": "source_path", "dataType": ["text"]},
-                {"name": "source_type", "dataType": ["text"]},
-                {"name": "loader", "dataType": ["text"]},
+                {"name": "storage_type", "dataType": ["text"]},
+                {"name": "asset_uri", "dataType": ["text"]},
+                {"name": "file_reader", "dataType": ["text"]},
+                {"name": "parsed_format", "dataType": ["text"]},
                 {"name": "labels", "dataType": ["text[]"]},
+                {"name": "filename", "dataType": ["text"]},
                 {"name": "size_bytes", "dataType": ["int"]},
                 {"name": "last_modified", "dataType": ["int"]},
                 {"name": "fingerprint", "dataType": ["text"]},
@@ -173,7 +174,9 @@ class WeaviateClient(StorageClient):
         )
         return self._build_scored_chunks(results.objects)
 
-    async def hybrid_chunks(self, query: str, vector: list[float], collection_name: str, limit: int, filters: dict | None = None) -> list[ScoredChunk]:
+    async def hybrid_chunks(
+            self, query: str, vector: list[float], collection_name: str, limit: int, filters: dict | None = None
+    ) -> list[ScoredChunk]:
         collection = self.client.collections.get(collection_name)
         wv_filters = self.build_filter(filters.get("and", [])) if filters else None
         results = await collection.query.hybrid(

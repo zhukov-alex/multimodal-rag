@@ -9,7 +9,7 @@ class ChunkingConfig(BaseModel):
     json_chunker: dict[str, Any] | None = None
     code_chunker: dict[str, Any] | None = None
     recursive_chunker: dict[str, Any] | None = None
-    content_type_to_chunker: dict[str, str]
+    content_type_to_chunker: dict[str, str | None]
 
 
 class TextEmbeddingConfig(BaseModel):

@@ -1,11 +1,11 @@
 from typing import Optional, Any
 import asyncio
 
+from multimodal_rag.asset_store.reader import AssetReaderService
 from multimodal_rag.embedder.service import EmbedderService
 from multimodal_rag.storage.types import StorageClient
 from multimodal_rag.document import MetaConfig, ScoredChunk, ScoredItem
 from multimodal_rag.retriever.types import SearchByText, SearchByImage
-from multimodal_rag.utils.loader import load_image_base64
 from multimodal_rag.log_config import logger
 
 
@@ -14,14 +14,16 @@ class MultiModalRetriever:
         self,
         embedder: EmbedderService,
         storage: StorageClient,
+        asset_reader: AssetReaderService,
         reranker: Optional[Any] = None,
     ) -> None:
         self.embedder = embedder
         self.storage = storage
+        self.asset_reader = asset_reader
         self.reranker = reranker
 
     async def retrieve_by_text(self, request: SearchByText) -> list[ScoredItem]:
-        text_vec = await self.embedder.text_embedder.embed_text_query(request.query)
+        text_vec = await self.embedder.embed_text_query(request.query)
         image_vec = await self.embedder.embed_text_as_image(request.query)
         text_model = self.embedder.text_model_name
         image_model = self.embedder.image_model_name
@@ -36,8 +38,8 @@ class MultiModalRetriever:
                 retrieval = await self.storage.query_by_vector(
                     vector=text_vec,
                     collection_name=text_collection,
-                    top_k=top_k_text,
                     filters=request.filters,
+                    top_k=top_k_text,
                 )
             else:
                 retrieval = await self.storage.hybrid_chunks(
@@ -82,7 +84,8 @@ class MultiModalRetriever:
                 content=sc.chunk.content,
                 modality=doc.get("modality", "text"),
                 score=sc.score,
-                source_path=doc.get("source", {}).get("source_path", ""),
+                asset_storage=doc.get("source", {}).get("storage_type"),
+                asset_uri=doc.get("source", {}).get("asset_uri"),
                 caption=doc.get("metadata", {}).get("caption"),
                 metadata=MetaConfig(**doc.get("metadata", {})),
             )
@@ -99,7 +102,7 @@ class MultiModalRetriever:
 
     async def retrieve_by_image(self, request: SearchByImage) -> list[ScoredItem]:
         image_vec = (await self.embedder.image_embedder.embed_images([request.blob]))[0]
-        image_model = self.embedder.image_model_name()
+        image_model = self.embedder.image_model_name
         collection = f"{request.project_id}_embedding_{image_model}"
         top_k = request.top_k * 3
 
@@ -133,7 +136,8 @@ class MultiModalRetriever:
                 content=sc.chunk.content,
                 modality=doc.get("modality", "image"),
                 score=sc.score,
-                source_path=doc.get("source", {}).get("source_path", ""),
+                asset_storage=doc.get("source", {}).get("storage_type"),
+                asset_uri=doc.get("source", {}).get("asset_uri"),
                 caption=doc.get("metadata", {}).get("caption"),
                 metadata=MetaConfig(**doc.get("metadata", {})),
             )
@@ -152,9 +156,12 @@ class MultiModalRetriever:
     async def _load_images(self, items: list[ScoredItem]) -> None:
         image_items = [
             item for item in items
-            if item.modality == "image" and not item.image_base64 and item.source_path
+            if item.modality == "image" and not item.image_base64 and item.asset_uri
         ]
-        image_tasks = {item.doc_uuid: load_image_base64(item.source_path) for item in image_items}
+        image_tasks = {
+            item.doc_uuid: self.asset_reader.read_image_base64(item.asset_storage, item.asset_uri)
+            for item in image_items
+        }
 
         if not image_tasks:
             return

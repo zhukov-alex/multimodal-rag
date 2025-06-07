@@ -1,3 +1,8 @@
+import importlib.util
+import sys
+
+from typing import Callable, Any
+
 from multimodal_rag.config.schema import (
     TextEmbeddingConfig,
     ImageEmbeddingConfig,
@@ -8,144 +13,154 @@ from multimodal_rag.config.schema import (
     RerankerConfig,
     GenerationConfig,
 )
-from multimodal_rag.embedder.repltext import ReplicateTextEmbedder
-from multimodal_rag.embedder.openai import OpenAIEmbedder
-from multimodal_rag.embedder.ollama import OllamaEmbedder
-from multimodal_rag.embedder.replimage import ReplicateImageEmbedder
-from multimodal_rag.embedder.custom_text import CustomTextEmbedder
-from multimodal_rag.embedder.custom_image import CustomImageEmbedder
+
 from multimodal_rag.embedder.types import ImageEmbedder, TextEmbedder
-from multimodal_rag.generator.llamacpp import LlamaCppGenerator
-from multimodal_rag.generator.ollama import OllamaGenerator
-from multimodal_rag.generator.openai import OpenAIGenerator
-from multimodal_rag.generator.params.llamacpp import LlamaCppParams
-from multimodal_rag.generator.params.ollama import OllamaParams
-from multimodal_rag.generator.params.openai import OpenAIParams
 from multimodal_rag.generator.types import Generator, LLMQueryParams
-
-from multimodal_rag.preprocessor.transcriber.replicate import ReplicateTranscriber
-from multimodal_rag.preprocessor.transcriber.custom import CustomAudioTranscriber
 from multimodal_rag.preprocessor.transcriber.types import AudioTranscriber
-
-from multimodal_rag.preprocessor.captioner.custom import CustomImageCaptioner
 from multimodal_rag.preprocessor.captioner.types import ImageCaptioner
-
-from multimodal_rag.reranker.custom import CustomReranker
 from multimodal_rag.reranker.types import Reranker
-
-from multimodal_rag.storage.weaviate import WeaviateClient
 from multimodal_rag.storage.types import StorageClient
-
-from multimodal_rag.asset_store.local import LocalAssetStore
-from multimodal_rag.asset_store.s3 import S3AssetStore
 from multimodal_rag.asset_store.types import AssetStore
 
+
+class Registry:
+    def __init__(self, lazy: bool = True):
+        self.lazy = lazy
+
+    def factory(self, module_path: str, class_name: str) -> Callable[[], Any]:
+        if self.lazy:
+            return lambda: self._import_lazy(module_path, class_name)
+        else:
+            cls = self._import_eager(module_path, class_name)
+            return lambda: cls
+
+    def _import_lazy(self, module_path: str, class_name: str) -> Any:
+        if module_path in sys.modules:
+            module = sys.modules[module_path]
+        else:
+            spec = importlib.util.find_spec(module_path)
+            if spec is None:
+                raise ImportError(f"Module '{module_path}' not found")
+            loader = importlib.util.LazyLoader(spec.loader)
+            spec.loader = loader
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_path] = module
+            loader.exec_module(module)
+        return getattr(module, class_name)
+
+    def _import_eager(self, module_path: str, class_name: str) -> Any:
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
+
+
+USE_LAZY = False
+registry = Registry(lazy=USE_LAZY)
+
 TEXT_EMBEDDER_MAPPING = {
-    "replicate": ReplicateTextEmbedder,
-    "openai": OpenAIEmbedder,
-    "ollama": OllamaEmbedder,
-    "custom": CustomTextEmbedder,
+    "replicate": registry.factory("multimodal_rag.embedder.repltext", "ReplicateTextEmbedder"),
+    "openai": registry.factory("multimodal_rag.embedder.openai", "OpenAIEmbedder"),
+    "ollama": registry.factory("multimodal_rag.embedder.ollama", "OllamaEmbedder"),
+    "custom": registry.factory("multimodal_rag.embedder.custom_text", "CustomTextEmbedder"),
 }
 
 IMAGE_EMBEDDER_MAPPING = {
-    "replicate": ReplicateImageEmbedder,
-    "custom": CustomImageEmbedder,
+    "replicate": registry.factory("multimodal_rag.embedder.replimage", "ReplicateImageEmbedder"),
+    "custom": registry.factory("multimodal_rag.embedder.custom_image", "CustomImageEmbedder"),
 }
 
 TRANSCRIBER_MAPPING = {
-    "replicate": ReplicateTranscriber,
-    "custom": CustomAudioTranscriber,
+    "replicate": registry.factory("multimodal_rag.preprocessor.transcriber.replicate", "ReplicateTranscriber"),
+    "custom": registry.factory("multimodal_rag.preprocessor.transcriber.custom", "CustomAudioTranscriber"),
 }
 
 CAPTIONER_MAPPING = {
-    "custom": CustomImageCaptioner,
+    "custom": registry.factory("multimodal_rag.preprocessor.captioner.custom", "CustomImageCaptioner"),
 }
 
 STORAGE_CLIENTS = {
-    "weaviate": WeaviateClient,
+    "weaviate": registry.factory("multimodal_rag.storage.weaviate", "WeaviateClient"),
 }
 
 GENERATOR_PARAMS_MAPPING = {
-    "openai": OpenAIParams,
-    "ollama": OllamaParams,
-    "llamacpp": LlamaCppParams,
+    "openai": registry.factory("multimodal_rag.generator.params.openai", "OpenAIParams"),
+    "ollama": registry.factory("multimodal_rag.generator.params.ollama", "OllamaParams"),
+    "llamacpp": registry.factory("multimodal_rag.generator.params.llamacpp", "LlamaCppParams"),
 }
 
 GENERATOR_MAPPING = {
-    "openai": OpenAIGenerator,
-    "ollama": OllamaGenerator,
-    "llamacpp": LlamaCppGenerator,
+    "openai": registry.factory("multimodal_rag.generator.openai", "OpenAIGenerator"),
+    "ollama": registry.factory("multimodal_rag.generator.ollama", "OllamaGenerator"),
+    "llamacpp": registry.factory("multimodal_rag.generator.llamacpp", "LlamaCppGenerator"),
 }
 
 RERANKER_MAPPING = {
-    "custom": CustomReranker,
+    "custom": registry.factory("multimodal_rag.reranker.custom", "CustomReranker"),
 }
 
 ASSET_STORE_CLIENTS = {
-    "local": LocalAssetStore,
-    "s3": S3AssetStore,
+    "local": registry.factory("multimodal_rag.asset_store.local", "LocalAssetStore"),
+    "s3": registry.factory("multimodal_rag.asset_store.s3", "S3AssetStore"),
 }
 
 
 def create_transcriber(config: TranscribingConfig) -> AudioTranscriber:
-    transcriber_class = TRANSCRIBER_MAPPING.get(config.type)
-    if not transcriber_class:
+    cls = TRANSCRIBER_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown transcriber type: {config.type}")
-    return transcriber_class(model=config.model)
+    return cls()(model=config.model)
 
 
 def create_captioner(config: CaptioningConfig) -> ImageCaptioner:
-    captioner_class = CAPTIONER_MAPPING.get(config.type)
-    if not captioner_class:
+    cls = CAPTIONER_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown captioner type: {config.type}")
-    return captioner_class(model=config.model)
+    return cls()(model=config.model)
 
 
 def create_text_embedder(config: TextEmbeddingConfig) -> TextEmbedder:
-    embedder_class = TEXT_EMBEDDER_MAPPING.get(config.type)
-    if not embedder_class:
+    cls = TEXT_EMBEDDER_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown text embedder type: {config.type}")
-    return embedder_class(model=config.model)
+    return cls()(model=config.model)
 
 
 def create_image_embedder(config: ImageEmbeddingConfig) -> ImageEmbedder:
-    embedder_class = IMAGE_EMBEDDER_MAPPING.get(config.type)
-    if not embedder_class:
+    cls = IMAGE_EMBEDDER_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown image embedder type: {config.type}")
-    return embedder_class(model=config.model)
+    return cls()(model=config.model)
 
 
 def create_storage_client(config: StoragingConfig) -> StorageClient:
-    client_class = STORAGE_CLIENTS.get(config.type)
-    if not client_class:
+    cls = STORAGE_CLIENTS.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown storage type: {config.type}")
-    return client_class(getattr(config, config.type))
+    return cls()(getattr(config, config.type))
 
 
 def create_asset_store(config: AssetStoreConfig) -> AssetStore:
-    store_class = ASSET_STORE_CLIENTS.get(config.type)
-    if not store_class:
+    cls = ASSET_STORE_CLIENTS.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown asset store type: {config.type}")
-
-    return store_class(getattr(config, config.type))
+    return cls()(getattr(config, config.type))
 
 
 def create_reranker(config: RerankerConfig) -> Reranker:
-    reranker_class = RERANKER_MAPPING.get(config.type)
-    if not reranker_class:
+    cls = RERANKER_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown reranker type: {config.type}")
-    return reranker_class(model=config.model, supported_modes=config.supported_modes)
+    return cls()(model=config.model, supported_modes=config.supported_modes)
 
 
 def create_generator(config: GenerationConfig) -> Generator:
-    generator_class = GENERATOR_MAPPING.get(config.type)
-    if not generator_class:
+    cls = GENERATOR_MAPPING.get(config.type)
+    if not cls:
         raise ValueError(f"Unknown generator type: {config.type}")
-    return generator_class(model=config.model, context_limit=config.context_limit)
+    return cls()(model=config.model, context_limit=config.context_limit)
 
 
 def parse_llm_params(generator_type: str, payload: dict) -> LLMQueryParams:
-    cls = GENERATOR_PARAMS_MAPPING.get(generator_type)
-    if not cls:
+    factory = GENERATOR_PARAMS_MAPPING.get(generator_type)
+    if not factory:
         raise ValueError(f"Unknown generator type: {generator_type}")
-    return cls(**payload)
+    return factory()(**payload)

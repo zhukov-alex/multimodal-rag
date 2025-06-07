@@ -57,9 +57,16 @@ class ChunkerService:
 
             if part_chunks:
                 buffer_tail = part_chunks.pop()
-                text_chunks.extend(chunk.strip() for chunk in part_chunks if chunk.strip())
+            else:
+                buffer_tail = ""
 
-        if buffer_tail.strip():
+            text_chunks.extend(
+                chunk.strip()
+                for chunk in part_chunks
+                if isinstance(chunk, str) and chunk.strip()
+            )
+
+        if isinstance(buffer_tail, str) and buffer_tail.strip():
             text_chunks.append(buffer_tail.strip())
 
         return [

@@ -44,7 +44,7 @@ class StorageClient(Protocol):
         ...
 
     async def query_by_filter(
-        self, collection_name: str, filter: dict
+        self, collection_name: str, filters: dict
     ) -> list[dict]:
         ...
 
@@ -53,5 +53,12 @@ class StorageClient(Protocol):
     ) -> list[dict]:
         ...
 
-    async def query_by_vector(self, vector: list[float], collection_name: str, filters: dict | None = None) -> list[ScoredChunk]:
+    async def query_by_vector(
+            self, vector: list[float], collection_name: str, filters: dict | None = None, top_k: int = 10
+    ) -> list[ScoredChunk]:
+        ...
+
+    async def hybrid_chunks(
+            self, query: str, vector: list[float], collection_name: str, limit: int, filters: dict | None = None
+    ) -> list[ScoredChunk]:
         ...

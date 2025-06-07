@@ -11,7 +11,7 @@ from multimodal_rag.loader.reader.extension_based import ExtensionBasedReader
 from multimodal_rag.loader.reader.registry import ReaderRegistry
 from multimodal_rag.loader.resolver import SourceResolver
 from multimodal_rag.loader.service import RecursiveLoaderService
-from multimodal_rag.asset_store.service import AssetStorageService
+from multimodal_rag.asset_store.writer import AssetWriterService
 from multimodal_rag.chunker.registry import SplitterRegistry
 from multimodal_rag.chunker.service import ChunkerService
 from multimodal_rag.embedder.service import EmbedderService
@@ -46,7 +46,7 @@ async def run_index_pipeline(source: str, config: IndexingConfig, project_id: st
 
     asset_store = create_asset_store(config.asset_store) if config.asset_store else None
     asset_storage_service = (
-        AssetStorageService(store=asset_store) if asset_store else None
+        AssetWriterService(store=asset_store) if asset_store else None
     )
 
     docs = []

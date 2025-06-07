@@ -76,8 +76,8 @@ pre-commit = "^3.0"
 pytest = "^7.0"
 
 [tool.poetry.scripts]
-index-pipeline = "multimodal_rag.cli:app"
-rag-pipeline = "multimodal_rag.cli:app"
+index-pipeline = "cli:index"
+rag-pipeline = "cli:rag"
 
 [tool.mypy]
 python_version = "3.11"

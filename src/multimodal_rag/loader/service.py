@@ -1,3 +1,5 @@
+import asyncio
+
 from multimodal_rag.document import Document
 from multimodal_rag.loader.types import LoadResult
 from multimodal_rag.loader.resolver import SourceResolver
@@ -26,7 +28,13 @@ class RecursiveLoaderService:
         result: LoadResult = await loader.load(source, filter)
 
         documents = list(result.documents)
-        for sub in result.next_sources:
-            documents.extend(await self._load_recursive(str(sub), filter, depth + 1))
+
+        if result.next_sources:
+            sub_results = await asyncio.gather(*[
+                self._load_recursive(str(sub), filter, depth + 1)
+                for sub in result.next_sources
+            ])
+            for sub_docs in sub_results:
+                documents.extend(sub_docs)
 
         return documents

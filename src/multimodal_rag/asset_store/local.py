@@ -5,6 +5,7 @@ from pathlib import Path
 from multimodal_rag.asset_store.types import AssetStore
 from multimodal_rag.config.schema import LocalAssetConfig
 from multimodal_rag.document import MetaConfig
+from multimodal_rag.utils.loader import load_file
 
 
 class LocalAssetStore(AssetStore):
@@ -31,5 +32,11 @@ class LocalAssetStore(AssetStore):
                 raise FileExistsError(f"Asset already exists at {target_path} and overwrite=False")
             target_path.unlink()
 
-        await asyncio.to_thread(shutil.move, str(tmp_path), str(target_path))
+        await asyncio.to_thread(shutil.copy2, tmp_path, target_path) # type: ignore
         return f"file://{target_path.resolve()}"
+
+    async def read(self, uri: str) -> bytes:
+        return await load_file(uri)
+
+    async def ensure_storage(self, project_id: str) -> None:
+        pass

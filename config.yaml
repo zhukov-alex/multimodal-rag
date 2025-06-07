@@ -10,7 +10,7 @@ chunking:
 
   code_chunker:
     chunk_size: 400
-    overlap: 50
+    chunk_overlap: 50
 
   recursive_chunker:
     chunk_size: 400
@@ -91,4 +91,7 @@ asset_store:
     bucket: bucket-name
     region: eu-central-1
     endpoint_url: http://localhost:9000
+    overwrite: true
+  local:
+    root_dir: /local/dir
     overwrite: true

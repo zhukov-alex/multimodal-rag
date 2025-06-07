@@ -3,7 +3,7 @@ import asyncio
 from multimodal_rag.document import Document, Chunk, ChunkGroup
 from multimodal_rag.embedder.types import TextEmbedder, ImageEmbedder
 from multimodal_rag.log_config import logger
-from multimodal_rag.utils.loader import load_image_bytes_from_source
+from multimodal_rag.utils.loader import load_image_bytes
 
 DEFAULT_MAX_CONCURRENCY = 8
 
@@ -48,32 +48,36 @@ class EmbedderService:
         embeddings = await self.image_embedder.embed_texts([text])
         return embeddings[0]
 
-    async def embed_image_query(self, path: str) -> list[float]:
+    async def embed_image_query(self, image_bytes: bytes) -> list[float]:
         if not self.image_embedder:
             raise RuntimeError("Image embedder is not configured.")
 
-        logger.debug("Embedding image query", extra={"path": path})
-        image_bytes = await load_image_bytes_from_source(path)
+        logger.debug("Embedding image query")
         embeddings = await self.image_embedder.embed_images([image_bytes])
         return embeddings[0]
 
     async def _embed_one_document(self, doc: Document) -> None:
-        match doc.source.type:
+        match doc.source.get_modality():
             case "image":
                 await self._embed_image(doc)
             case "text":
                 await self._embed_text(doc)
+            case "blob":
+                return
             case _:
-                raise RuntimeError(f"Unsupported modality type: {doc.source.type} for doc {doc.uuid}")
+                raise RuntimeError(f"Unsupported modality type: {doc.source.parsed_format} for doc {doc.uuid}")
 
     async def _embed_image(self, doc: Document) -> None:
         if not self.image_embedder:
             raise RuntimeError("No image embedder provided")
 
-        path = doc.source.tmp_path
+        path = doc.source.tmp_uri
+        if not path:
+            raise ValueError("Document is missing temporary image path")
+
         logger.debug("Embedding image document", extra={"path": path})
 
-        image_bytes = await load_image_bytes_from_source(path)
+        image_bytes = await load_image_bytes(path)
         embedding = (await self.image_embedder.embed_images([image_bytes]))[0]
 
         caption = doc.content or ""
