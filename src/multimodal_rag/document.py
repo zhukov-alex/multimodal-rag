@@ -4,11 +4,13 @@ from pydantic import BaseModel, Field
 class Chunk(BaseModel):
     chunk_id: int
     content: str
+    embedding: list[float] | None = Field(default=None)
 
 
 class ScoredChunk(BaseModel):
     chunk: Chunk
     score: float
+    doc_uuid: str
 
 
 class ChunkGroup(BaseModel):

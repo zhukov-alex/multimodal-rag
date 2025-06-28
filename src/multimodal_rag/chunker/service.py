@@ -34,6 +34,11 @@ class ChunkerService:
         """
         Chunk one document.
         """
+
+        modality = doc.source.get_modality()
+        if modality != "text":
+            return
+
         splitter = self.registry.get_splitter(doc)
         chunks = self._buffered_split(doc, splitter)
 

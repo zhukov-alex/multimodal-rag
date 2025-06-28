@@ -4,11 +4,14 @@ import asyncio
 from typing import List
 from aiohttp import ClientError
 from asyncio import TimeoutError
+
+from multimodal_rag.config.schema import TextEmbeddingConfig
 from multimodal_rag.utils.retry import backoff
 from multimodal_rag.embedder.types import TextEmbedder
+from multimodal_rag.utils.vector import l2_normalize
 
 
-async def get_openai_models(embedding_only: bool = False) -> List[str]:
+async def get_openai_models(embedding_only: bool = False) -> list[str]:
     """
     Returns a list of available OpenAI model IDs.
     """
@@ -37,8 +40,8 @@ class OpenAIEmbedder(TextEmbedder):
     Embedding generator using the OpenAI Embedding API.
     """
 
-    def __init__(self, model):
-        self._model_name = model
+    def __init__(self, config: TextEmbeddingConfig):
+        self._config = config
         self.api_key = os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("Missing OPENAI_API_KEY in environment.")
@@ -46,9 +49,9 @@ class OpenAIEmbedder(TextEmbedder):
 
     @property
     def model_name(self) -> str:
-        return self._model_name
+        return self._config.model
 
-    async def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """
         Embed a list of texts using OpenAI.
         """
@@ -65,13 +68,15 @@ class OpenAIEmbedder(TextEmbedder):
             return results
 
     @backoff(exception=(ClientError, TimeoutError))
-    async def _embed_one(self, session: aiohttp.ClientSession, text: str) -> List[float]:
+    async def _embed_one(self, session: aiohttp.ClientSession, text: str) -> list[float]:
         """
         Sends an embedding request to OpenAI.
         """
-        payload = {"model": self._model_name, "input": text}
+        payload = {"model": self._config.model, "input": text}
         async with session.post(f"{self.base_url}/embeddings", json=payload) as response:
             response.raise_for_status()
             data = await response.json()
-            return data["data"][0]["embedding"]
-
+            embedding = data["data"][0]["embedding"]
+            if self._config.normalize:
+                embedding = l2_normalize(embedding)
+            return embedding

@@ -52,12 +52,31 @@ class StorageIndexerService:
             )
             logger.info("Imported documents", extra={"count": len(docs)})
 
-            for chunk_collection in collection_map["embeddings"]:
-                await self.storage.insert_chunks(
-                    docs, collection_name=chunk_collection
+            model_to_collection = {
+                model_name: await self.storage.create_embedding_collection(
+                    name=self.project_id,
+                    embedding_model=model_name,
+                    dim=dim,
                 )
-                logger.info("Imported chunks", extra={"collection": chunk_collection})
-                await self._validate_chunks(docs, chunk_collection)
+                for model_name, dim in extract_used_model_dims(self.config, docs).items()
+            }
+
+            docs_by_model = {model: [] for model in model_to_collection}
+            for doc in docs:
+                modality = doc.source.get_modality()
+                if modality == "text":
+                    model = self.config.embedding.text.model
+                elif modality == "image":
+                    model = self.config.embedding.image.model
+                else:
+                    continue
+                docs_by_model[model].append(doc)
+
+            for model, doc_group in docs_by_model.items():
+                chunk_collection = model_to_collection[model]
+                await self.storage.insert_chunks(doc_group, collection_name=chunk_collection)
+                logger.info("Imported chunks", extra={"collection": chunk_collection, "docs": len(doc_group)})
+                await self._validate_chunks(doc_group, chunk_collection)
 
             logger.info("Completed chunk validation", extra={"collections": collection_map["embeddings"]})
 

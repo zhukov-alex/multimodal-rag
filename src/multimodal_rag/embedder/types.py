@@ -22,7 +22,7 @@ class ImageEmbedder(Protocol):
     Interface for image embedding API.
     """
 
-    async def embed_images(self, images: list[bytes]) -> list[list[float]]:
+    async def embed_images(self, images: list[str]) -> list[list[float]]:
         """
         Embed a list of images.
         """

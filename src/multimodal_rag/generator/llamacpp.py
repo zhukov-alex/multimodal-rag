@@ -5,22 +5,25 @@ from typing import AsyncGenerator
 from asyncio import TimeoutError
 from aiohttp.client_exceptions import ClientError, ClientResponseError
 
+from multimodal_rag.generator.prompt_builder.llamacpp import LlamaCppPromptBuilder
+from multimodal_rag.generator.prompt_builder.types import PromptBuilder
 from multimodal_rag.generator.types import Generator, GenerateRequest
 from multimodal_rag.generator.params.llamacpp import LlamaCppParams
 from multimodal_rag.utils.retry import backoff
 
 
 class LlamaCppGenerator(Generator):
-    def __init__(self, model: str, context_limit: int | None = None):
+    def __init__(self, model: str, context_limit: int | None = None, builder: PromptBuilder | None = None):
         self.model = model
         self.context_limit = context_limit
-        self.base_url = os.getenv("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
+        self.prompt_builder = builder or LlamaCppPromptBuilder()
+        self.base_url = os.getenv("LLAMACPP_BASE_URL", "http://localhost:8088/v1")
 
     async def generate(self, request) -> str:
         if not isinstance(request.params, LlamaCppParams):
             raise TypeError("Expected llama.cpp-compatible generation params")
 
-        payload = request.prompt_builder.build(request, self.model)
+        payload = self.prompt_builder.build(request, self.model)
 
         async with aiohttp.ClientSession() as session:
             return await self._call_api(session, payload)
@@ -29,7 +32,7 @@ class LlamaCppGenerator(Generator):
         if not isinstance(request.params, LlamaCppParams):
             raise TypeError("Expected llama.cpp-compatible generation params")
 
-        payload = request.prompt_builder.build(request, self.model)
+        payload = self.prompt_builder.build(request, self.model)
         payload["stream"] = True
 
         async with aiohttp.ClientSession() as session:

@@ -6,7 +6,7 @@ from multimodal_rag.config.factory import (
     create_text_embedder,
     create_image_embedder,
     create_storage_client,
-    create_asset_store,
+    create_asset_stores,
     create_reranker,
     create_generator,
     parse_llm_params,
@@ -18,6 +18,7 @@ from multimodal_rag.retriever.types import SearchByText, SearchByImage
 from multimodal_rag.generator.service import GeneratorService
 from multimodal_rag.generator.types import Generator, GenerateRequest
 from multimodal_rag.log_config import logger
+from multimodal_rag.utils.loader import load_image_base64
 from multimodal_rag.utils.timing import log_duration
 
 
@@ -47,12 +48,7 @@ async def run_rag_pipeline(
         batch_size=config.embedding.batch_size or 64,
     )
 
-    stores = {
-        name: create_asset_store(store_config)
-        for name, store_config in config.items()
-    }
-    asset_reader = AssetReaderService(stores=stores)
-
+    asset_reader = AssetReaderService(stores=create_asset_stores(config.asset_store))
     storage = create_storage_client(config.storaging)
     reranker = create_reranker(config.reranking) if config.reranking else None
     retriever = MultiModalRetriever(
@@ -64,71 +60,79 @@ async def run_rag_pipeline(
     generator: Generator = create_generator(config.generation)
     generator_service = GeneratorService(generator)
 
-    # --- Retrieve ---
-    context_docs = []
-    if request.query:
-        async with log_duration("retrieve_by_text", query=request.query, top_k=request.modality_top_k):
-            search_request = SearchByText(
-                query=request.query,
-                project_id=project_id,
-                modality_top_k=request.modality_top_k,
-                filters={},
-                search_type="embedding",
-            )
-            context_docs = await retriever.retrieve_by_text(search_request)
+    try:
+        # --- Retrieve ---
+        context_docs = []
+        if request.query:
+            async with log_duration("retrieve_by_text", query=request.query, top_k=request.modality_top_k):
+                search_request = SearchByText(
+                    query=request.query,
+                    project_id=project_id,
+                    modality_top_k=request.modality_top_k,
+                    filters={},
+                    search_type="embedding",
+                )
+                context_docs = await retriever.retrieve_by_text(search_request)
 
-    elif request.image_path:
-        async with log_duration("retrieve_by_image", image_path=str(request.image_path), top_k=request.modality_top_k):
-            with request.image_path.open("rb") as f:
-                blob = f.read()
-            search_request = SearchByImage(
-                blob=blob,
-                project_id=project_id,
-                top_k=request.modality_top_k.get("image", 0),
-                filters={},
-            )
-            context_docs = await retriever.retrieve_by_image(search_request)
+        elif request.image_path:
+            async with log_duration("retrieve_by_image", image_path=str(request.image_path), top_k=request.modality_top_k):
+                img_b64 = await load_image_base64(str(request.image_path))
+                search_request = SearchByImage(
+                    img_b64=img_b64,
+                    project_id=project_id,
+                    top_k=request.modality_top_k.get("image", 0),
+                    filters={},
+                )
+                context_docs = await retriever.retrieve_by_image(search_request)
 
-    # --- Build generation request ---
-    question = request.ask or request.query
-    if not question:
-        logger.error("Neither query nor ask was provided")
-        raise ValueError("You must provide either 'ask' or 'query'.")
+        # --- Build generation request ---
+        question = request.ask or request.query
+        if not question:
+            logger.error("Neither query nor ask was provided")
+            raise ValueError("You must provide either 'ask' or 'query'.")
 
-    history = await load_history(project_id)
-    llm_params = parse_llm_params(config.generation.type, request.llm_params)
+        history = await load_history(project_id)
+        llm_params = parse_llm_params(config.generation.type, request.llm_params)
 
-    gen_request = GenerateRequest(
-        query=question,
-        context_docs=context_docs,
-        history=history,
-        system_prompt=request.system_prompt,
-        params=llm_params,
-    )
+        gen_request = GenerateRequest(
+            query=question,
+            context_docs=context_docs,
+            history=history,
+            system_prompt=request.system_prompt,
+            params=llm_params,
+        )
 
-    # --- Generate ---
-    if stream:
-        print("\n[ANSWER]\n", end="", flush=True)
-        response = ""
-        async with log_duration("stream_response", tokens=llm_params.token_limit):
-            try:
-                async for chunk in generator_service.generate_stream(gen_request):
-                    response += chunk
-                    print(chunk, end="", flush=True)
-            except Exception as e:
-                logger.exception("Streaming generation failed", extra={"error": str(e)})
-                print("\n[STREAM ERROR]", flush=True)
+        logger.debug("Generated request", extra={"request": gen_request})
 
-        await save_history(project_id, question, response)
+        # --- Generate ---
+        if stream:
+            print("\n[ANSWER]\n", end="", flush=True)
+            response = ""
+            async with log_duration("stream_response", tokens=llm_params.token_limit):
+                try:
+                    async for chunk in generator_service.generate_stream(gen_request):
+                        response += chunk
+                        print(chunk, end="", flush=True)
+                except Exception as e:
+                    logger.exception("Streaming generation failed", extra={"error": str(e)})
+                    print("\n[STREAM ERROR]", flush=True)
 
-    else:
-        async with log_duration("generate_response", tokens=llm_params.token_limit):
-            response = await generator_service.generate(gen_request)
+            await save_history(project_id, question, response)
 
-        logger.info("Generated response", extra={"length": len(response), "response": response})
-        print("\n[ANSWER]\n", response)
+        else:
+            async with log_duration("generate_response", tokens=llm_params.token_limit):
+                response = await generator_service.generate(gen_request)
 
-        await save_history(project_id, question, response)
+            logger.info("Generated response", extra={"length": len(response), "response": response})
+            print("\n[ANSWER]\n", response)
+
+            await save_history(project_id, question, response)
+
+    except Exception as e:
+        logger.exception("RAG pipeline failed", extra={"error": str(e)})
+        raise
+    finally:
+        await storage.close()
 
 
 # Stubs

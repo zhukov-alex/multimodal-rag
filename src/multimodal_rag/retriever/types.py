@@ -12,7 +12,7 @@ class SearchByText(BaseModel):
 
 
 class SearchByImage(BaseModel):
-    blob: bytes
+    img_b64: str
     caption: str | None = None
     rerank: Literal["text", "images"] | None = None
     top_k: int = 10

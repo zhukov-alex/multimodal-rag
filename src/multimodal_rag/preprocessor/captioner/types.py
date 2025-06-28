@@ -6,7 +6,7 @@ class ImageCaptioner(Protocol):
     Interface for image captioning API.
     """
 
-    async def generate_captions(self, images: list[bytes]) -> list[str]:
+    async def generate_captions(self, images: list[str]) -> list[str]:
         """
         Generate captions for a list of images.
         """

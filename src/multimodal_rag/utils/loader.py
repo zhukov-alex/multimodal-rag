@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 
-async def load_image_bytes(path: str, format: str = "PNG") -> bytes:
+async def load_image_base64(path: str, format: str = "PNG") -> str:
     image = await load_file(path)
     return await asyncio.to_thread(image_bytes_to_base64, image, format)
 

@@ -1,7 +1,5 @@
 import aiohttp
 import asyncio
-import base64
-from typing import List
 from aiohttp import ClientError
 from asyncio import TimeoutError
 
@@ -22,16 +20,16 @@ class ReplicateImageCaptioner(ReplicateClientMixin, ImageCaptioner):
     def model_name(self) -> str:
         return self._model_name
 
-    async def generate_captions(self, images: List[bytes]) -> List[str]:
+    async def generate_captions(self, images: list[str]) -> list[str]:
         """
         Generate captions for a list of images.
         """
         async with aiohttp.ClientSession() as session:
-            tasks = [self._caption_one(session, img) for img in images]
+            tasks = [self._caption_one(session, img_b64) for img_b64 in images]
             return await asyncio.gather(*tasks)
 
     @backoff(exception=(ClientError, TimeoutError))
-    async def _caption_one(self, session: aiohttp.ClientSession, img_bytes: bytes) -> str:
+    async def _caption_one(self, session: aiohttp.ClientSession, img_b64: str) -> str:
         """
         Sends an image to Replicate and gets a caption.
         """
@@ -40,14 +38,13 @@ class ReplicateImageCaptioner(ReplicateClientMixin, ImageCaptioner):
             "Content-Type": "application/json"
         }
 
-        # Encode image as base64 data URI
-        encoded = base64.b64encode(img_bytes).decode("utf-8")
-        data_uri = f"data:image/png;base64,{encoded}"
+        if not img_b64.startswith("data:image/"):
+            img_b64 = f"data:image/png;base64,{img_b64}"
 
         payload = {
             "version": self._model_name,
             "input": {
-                "image": data_uri
+                "image": img_b64
             }
         }
 

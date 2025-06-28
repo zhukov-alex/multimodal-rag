@@ -22,6 +22,7 @@ class ImageEmbeddingConfig(BaseModel):
     type: Literal["replicate", "custom"]
     model: str
     input_size: int | None = 224
+    normalize: bool | None = True
 
 
 class EmbeddingConfig(BaseModel):
@@ -37,7 +38,7 @@ class WeaviateConnectionConfig(BaseModel):
     port: int | None = 8080
     secure: bool | None = True
     dimension: int | None = None
-    distance_metric: str | None = "cosine"
+    distance: str | None = "cosine"
 
 
 class StoragingConfig(BaseModel):
@@ -92,7 +93,7 @@ class RerankerConfig(BaseModel):
 
 
 class GenerationConfig(BaseModel):
-    type: Literal["openai", "ollama"]
+    type: Literal["openai", "ollama", "llamacpp"]
     model: str
     context_limit: int | None = None
 
@@ -102,3 +103,4 @@ class RAGConfig(BaseModel):
     storaging: StoragingConfig
     generation: GenerationConfig
     reranking: RerankerConfig | None = None
+    asset_store: AssetStoreConfig | None = None

@@ -71,5 +71,7 @@ async def run_index_pipeline(source: str, config: IndexingConfig, project_id: st
             await indexer.import_documents(docs, collections)
 
     finally:
+        await indexer.storage.close()
+
         if asset_storage_service and docs:
             await asset_storage_service.cleanup_tmp_files(docs)

@@ -121,14 +121,14 @@ def create_text_embedder(config: TextEmbeddingConfig) -> TextEmbedder:
     cls = TEXT_EMBEDDER_MAPPING.get(config.type)
     if not cls:
         raise ValueError(f"Unknown text embedder type: {config.type}")
-    return cls()(model=config.model)
+    return cls()(config=config)
 
 
 def create_image_embedder(config: ImageEmbeddingConfig) -> ImageEmbedder:
     cls = IMAGE_EMBEDDER_MAPPING.get(config.type)
     if not cls:
         raise ValueError(f"Unknown image embedder type: {config.type}")
-    return cls()(model=config.model)
+    return cls()(config=config)
 
 
 def create_storage_client(config: StoragingConfig) -> StorageClient:
@@ -143,6 +143,16 @@ def create_asset_store(config: AssetStoreConfig) -> AssetStore:
     if not cls:
         raise ValueError(f"Unknown asset store type: {config.type}")
     return cls()(getattr(config, config.type))
+
+
+def create_asset_stores(config: AssetStoreConfig) -> dict[str, AssetStore]:
+    return {
+        store_type: create_asset_store(
+            AssetStoreConfig(type=store_type, **{store_type: getattr(config, store_type)})
+        )
+        for store_type in ASSET_STORE_CLIENTS
+        if getattr(config, store_type) is not None
+    }
 
 
 def create_reranker(config: RerankerConfig) -> Reranker:

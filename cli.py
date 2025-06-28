@@ -22,7 +22,7 @@ def index(
     """Indexing pipeline: load, chunk, embed, index"""
     try:
         cfg_dict = yaml.safe_load(config_path.read_text())
-        cfg = IndexingConfig.parse_obj(cfg_dict)
+        cfg = IndexingConfig.model_validate(cfg_dict)
     except ValidationError as e:
         typer.echo("Config validation failed:", err=True)
         typer.echo(e, err=True)
@@ -41,8 +41,8 @@ def rag(
     """RAG pipeline: retrieve + generate based on config and payload"""
 
     try:
-        cfg = RAGConfig.parse_obj(yaml.safe_load(config_path.read_text()))
-        request = RAGRequest.parse_raw(payload_path.read_text())
+        cfg = RAGConfig.model_validate(yaml.safe_load(config_path.read_text()))
+        request = RAGRequest.model_validate_json(payload_path.read_text())
     except ValidationError as e:
         typer.echo("Validation failed:", err=True)
         typer.echo(e, err=True)

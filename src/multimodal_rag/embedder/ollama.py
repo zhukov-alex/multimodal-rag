@@ -5,8 +5,11 @@ import asyncio
 from typing import List
 from aiohttp import ClientError
 from asyncio import TimeoutError
+
+from multimodal_rag.config.schema import TextEmbeddingConfig
 from multimodal_rag.utils.retry import backoff
 from multimodal_rag.embedder.types import TextEmbedder
+from multimodal_rag.utils.vector import l2_normalize
 
 
 def get_ollama_models() -> List[str]:
@@ -25,14 +28,14 @@ class OllamaEmbedder(TextEmbedder):
     Embedding generator that uses the Ollama local API.
     """
 
-    def __init__(self, model: str):
-        self._model_name = model
+    def __init__(self, config: TextEmbeddingConfig):
+        self._config = config
         self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self._ensure_model_available()
 
     @property
     def model_name(self) -> str:
-        return self._model_name
+        return self._config.model
 
     def _ensure_model_available(self):
         """
@@ -40,8 +43,8 @@ class OllamaEmbedder(TextEmbedder):
         """
         try:
             available_models = get_ollama_models()
-            if self._model_name not in available_models:
-                raise ValueError(f"Model '{self._model_name}' not found in available Ollama models: {available_models}")
+            if self._config.model not in available_models:
+                raise ValueError(f"Model '{self._config.model}' not found in available Ollama models: {available_models}")
         except Exception as e:
             raise RuntimeError(f"Failed to verify Ollama model availability: {e}")
 
@@ -64,8 +67,11 @@ class OllamaEmbedder(TextEmbedder):
         """
         async with session.post(
             f"{self.base_url}/api/embeddings",
-            json={"model": self._model_name, "prompt": text}
+            json={"model": self._config.model, "prompt": text}
         ) as response:
             response.raise_for_status()
             data = await response.json()
-            return data["embedding"]
+            embedding = data["embedding"]
+            if self._config.normalize:
+                embedding = l2_normalize(embedding)
+            return embedding

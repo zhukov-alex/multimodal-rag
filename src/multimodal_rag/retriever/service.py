@@ -4,8 +4,9 @@ import asyncio
 from multimodal_rag.asset_store.reader import AssetReaderService
 from multimodal_rag.embedder.service import EmbedderService
 from multimodal_rag.storage.types import StorageClient
-from multimodal_rag.document import MetaConfig, ScoredChunk, ScoredItem
+from multimodal_rag.document import MetaConfig, ScoredChunk, ScoredItem, SourceConfig
 from multimodal_rag.retriever.types import SearchByText, SearchByImage
+from multimodal_rag.storage.utils import normalize_model_name
 from multimodal_rag.log_config import logger
 
 
@@ -24,9 +25,13 @@ class MultiModalRetriever:
 
     async def retrieve_by_text(self, request: SearchByText) -> list[ScoredItem]:
         text_vec = await self.embedder.embed_text_query(request.query)
-        image_vec = await self.embedder.embed_text_as_image(request.query)
-        text_model = self.embedder.text_model_name
-        image_model = self.embedder.image_model_name
+        text_model = normalize_model_name(self.embedder.text_model_name)
+
+        image_vec = None
+        image_model = None
+        if self.embedder.image_embedder:
+            image_vec = await self.embedder.embed_text_as_image(request.query)
+            image_model = normalize_model_name(self.embedder.image_model_name)
 
         top_k_text = request.modality_top_k.get("text", 0) * 3
         top_k_image = request.modality_top_k.get("image", 0) * 3
@@ -70,27 +75,27 @@ class MultiModalRetriever:
                 )
             chunk_results.extend(retrieval)
 
-        doc_ids = list({sc.chunk.doc_uuid for sc in chunk_results})
+        doc_ids = list({sc.doc_uuid for sc in chunk_results})
         doc_records = await self.storage.query_by_filter(
             collection_name=f"{request.project_id}_documents",
             filters={"and": [{"field": "uuid", "operator": "contains_any", "value": doc_ids}]},
         )
-        doc_map = {d["uuid"]: d for d in doc_records}
+        doc_map = {str(d["uuid"]): d for d in doc_records}
 
         results: list[ScoredItem] = [
             ScoredItem(
-                doc_uuid=sc.chunk.doc_uuid,
+                doc_uuid=sc.doc_uuid,
                 chunk_id=sc.chunk.chunk_id,
                 content=sc.chunk.content,
-                modality=doc.get("modality", "text"),
                 score=sc.score,
                 asset_storage=doc.get("source", {}).get("storage_type"),
                 asset_uri=doc.get("source", {}).get("asset_uri"),
                 caption=doc.get("metadata", {}).get("caption"),
+                modality=SourceConfig(**doc["source"]).get_modality(),
                 metadata=MetaConfig(**doc.get("metadata", {})),
             )
             for sc in chunk_results
-            if (doc := doc_map.get(sc.chunk.doc_uuid)) is not None
+            if (doc := doc_map.get(sc.doc_uuid)) is not None
         ]
 
         await self._load_images(results)
@@ -101,8 +106,8 @@ class MultiModalRetriever:
         return self._top_k_results(results, request.modality_top_k)
 
     async def retrieve_by_image(self, request: SearchByImage) -> list[ScoredItem]:
-        image_vec = (await self.embedder.image_embedder.embed_images([request.blob]))[0]
-        image_model = self.embedder.image_model_name
+        image_vec = (await self.embedder.image_embedder.embed_images([request.img_b64]))[0]
+        image_model = normalize_model_name(self.embedder.image_model_name)
         collection = f"{request.project_id}_embedding_{image_model}"
         top_k = request.top_k * 3
 
@@ -122,16 +127,16 @@ class MultiModalRetriever:
                 filters=request.filters,
             )
 
-        doc_ids = list({sc.chunk.doc_uuid for sc in chunk_results})
+        doc_ids = list({sc.doc_uuid for sc in chunk_results})
         document_results = await self.storage.query_by_filter(
             collection_name=f"{request.project_id}_documents",
             filters={"and": [{"field": "uuid", "operator": "contains_any", "value": doc_ids}]},
         )
-        doc_map = {d["uuid"]: d for d in document_results}
+        doc_map = {str(d["uuid"]): d for d in document_results}
 
         results: list[ScoredItem] = [
             ScoredItem(
-                doc_uuid=sc.chunk.doc_uuid,
+                doc_uuid=sc.doc_uuid,
                 chunk_id=sc.chunk.chunk_id,
                 content=sc.chunk.content,
                 modality=doc.get("modality", "image"),
@@ -142,7 +147,7 @@ class MultiModalRetriever:
                 metadata=MetaConfig(**doc.get("metadata", {})),
             )
             for sc in chunk_results
-            if (doc := doc_map.get(sc.chunk.doc_uuid)) is not None
+            if (doc := doc_map.get(sc.doc_uuid)) is not None
         ]
 
         await self._load_images(results)
@@ -185,5 +190,11 @@ class MultiModalRetriever:
         for mod, limit in modality_top_k.items():
             top_items = sorted(by_modality.get(mod, []), key=lambda i: i.score, reverse=True)[:limit]
             final_results.extend(top_items)
+
+        logger.debug("Top-k filter", extra={
+            "available_modalities": list(by_modality.keys()),
+            "counts": {k: len(v) for k, v in by_modality.items()},
+            "modality_top_k": modality_top_k
+        })
 
         return final_results

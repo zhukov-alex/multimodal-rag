@@ -14,7 +14,7 @@ from multimodal_rag.loader.reader.types import FileReader
 from multimodal_rag.preprocessor.captioner.types import ImageCaptioner
 from multimodal_rag.preprocessor.transcriber.types import AudioTranscriber
 from multimodal_rag.log_config import logger
-from multimodal_rag.utils.loader import load_image_bytes, load_file
+from multimodal_rag.utils.loader import load_image_base64, load_file
 from multimodal_rag.utils.timing import log_duration
 
 LANG_EXT = {
@@ -137,8 +137,8 @@ class ExtensionBasedReader(FileReader):
             return ""
         try:
             async with log_duration("caption_image", path=path):
-                image_bytes = await load_image_bytes(path)
-                captions = await self.captioner.generate_captions([image_bytes])
+                image_base64 = await load_image_base64(path)
+                captions = await self.captioner.generate_captions([image_base64])
                 return captions[0] if captions else ""
         except Exception as e:
             logger.warning(f"Failed to caption image {path}: {e}")

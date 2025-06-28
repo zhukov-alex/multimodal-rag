@@ -5,6 +5,7 @@ from weaviate import (
     use_async_with_embedded,
 )
 from weaviate.auth import AuthApiKey
+from weaviate.collections.classes.data import DataObject
 from weaviate.collections.classes.filters import Filter
 from weaviate.classes.init import AdditionalConfig, Timeout
 from weaviate.classes.query import MetadataQuery
@@ -38,7 +39,7 @@ class WeaviateClient(StorageClient):
                 )
             case "local":
                 self.client = use_async_with_local(
-                    host=f"{'https' if self.config.secure else 'http'}://{self._extract_host()}",
+                    host=self._extract_host(),
                     port=self.config.port,
                     auth_credentials=self._get_auth(),
                     additional_config=additional_config,
@@ -53,13 +54,13 @@ class WeaviateClient(StorageClient):
         await self.client.connect()
         logger.debug("Connected to Weaviate", extra={"deployment": self.config.deployment, "url": self.config.url})
 
-    async def create_embedding_collection(self, name: str | None, emb_model_name: str, dim: int, distance: str = "cosine") -> str:
+    async def create_embedding_collection(self, name: str | None, embedding_model: str, dim: int, distance: str = "cosine") -> str:
         client = await self.get_connection()
-        norm_model = normalize_model_name(emb_model_name)
+        norm_model = normalize_model_name(embedding_model)
         collection_name = f"{name}_embedding_{norm_model}" if name else f"embedding_{norm_model}"
 
         if await client.collections.exists(collection_name):
-            logger.debug("Embedding collection already exists", extra={"name": collection_name})
+            logger.debug("Embedding collection already exists", extra={"collection_name": collection_name})
             return collection_name
 
         await client.collections.create_from_dict({
@@ -77,7 +78,7 @@ class WeaviateClient(StorageClient):
             "autoSchema": False
         })
 
-        logger.debug("Created embedding collection", extra={"name": collection_name, "dim": dim})
+        logger.debug("Created embedding collection", extra={"collection_name": collection_name, "dim": dim})
         return collection_name
 
     async def create_document_collection(self, name: str) -> str:
@@ -85,7 +86,7 @@ class WeaviateClient(StorageClient):
         collection_name = f"{name}_documents"
 
         if await client.collections.exists(collection_name):
-            logger.debug("Document collection already exists", extra={"name": collection_name})
+            logger.debug("Document collection already exists", extra={"collection_name": collection_name})
             return collection_name
 
         await client.collections.create_from_dict({
@@ -106,7 +107,7 @@ class WeaviateClient(StorageClient):
             "autoSchema": False
         })
 
-        logger.debug("Created document collection", extra={"name": collection_name})
+        logger.debug("Created document collection", extra={"collection_name": collection_name})
         return collection_name
 
     async def insert_documents(self, documents: list[Document], collection_name: str) -> None:
@@ -120,24 +121,30 @@ class WeaviateClient(StorageClient):
         client = await self.get_connection()
         collection = client.collections.get(collection_name)
 
-        objects, vectors = [], []
+        objects = []
         for doc in documents:
-            for chunk in doc.chunks:
-                objects.append({
-                    "content": chunk.content,
-                    "chunk_id": str(chunk.chunk_id),
-                    "doc_uuid": doc.uuid
-                })
-                vectors.append(chunk.embedding)
-
-        await collection.data.insert_many(objects=objects, vectors=vectors)
+            for group in doc.chunk_groups:
+                for chunk in group.chunks:
+                    objects.append(DataObject(
+                        properties={
+                            "content": chunk.content,
+                            "chunk_id": str(chunk.chunk_id),
+                            "doc_uuid": doc.uuid,
+                        },
+                        vector=chunk.embedding
+                    ))
+        await collection.data.insert_many(objects)
         logger.debug("Inserted chunks", extra={"collection": collection_name, "count": len(objects)})
 
     async def delete_by_ids(self, collection_name: str, field: str, ids: list[str]) -> None:
         client = await self.get_connection()
         collection = client.collections.get(collection_name)
-        for _id in ids:
-            await collection.data.delete_many(where=Filter.by_property(field).equal(_id))
+
+        filter = Filter.by_property(field).contains_any(ids)
+        await collection.data.delete_many(
+            where=filter
+        )
+
         logger.debug("Deleted by ids", extra={"collection": collection_name, "field": field, "count": len(ids)})
 
     async def aggregate_total_count(self, collection_name: str, filter_by: AggregateFilter) -> int:
@@ -164,11 +171,12 @@ class WeaviateClient(StorageClient):
         return [obj.properties for obj in results.objects]
 
     async def query_by_vector(self, vector: list[float], collection_name: str, filters: dict | None = None, top_k: int = 10) -> list[ScoredChunk]:
-        collection = self.client.collections.get(collection_name)
+        client = await self.get_connection()
+        collection = client.collections.get(collection_name)
         wv_filters = self.build_filter(filters.get("and", [])) if filters else None
         results = await collection.query.near_vector(
             near_vector=vector,
-            where=wv_filters,
+            filters=wv_filters,
             limit=top_k,
             return_metadata=MetadataQuery(score=True, explain_score=False)
         )
@@ -177,14 +185,15 @@ class WeaviateClient(StorageClient):
     async def hybrid_chunks(
             self, query: str, vector: list[float], collection_name: str, limit: int, filters: dict | None = None
     ) -> list[ScoredChunk]:
-        collection = self.client.collections.get(collection_name)
+        client = await self.get_connection()
+        collection = client.collections.get(collection_name)
         wv_filters = self.build_filter(filters.get("and", [])) if filters else None
         results = await collection.query.hybrid(
             query=query,
             vector=vector,
             alpha=0.5,
             limit=limit,
-            where=wv_filters,
+            filters=wv_filters,
             return_metadata=MetadataQuery(score=True, explain_score=False)
         )
         return self._build_scored_chunks(results.objects)
@@ -202,7 +211,8 @@ class WeaviateClient(StorageClient):
                     chunk_id=int(obj.properties["chunk_id"]),
                     content=obj.properties["content"],
                 ),
-                score=obj.metadata.score
+                score=obj.metadata.score,
+                doc_uuid=obj.properties["doc_uuid"]
             ) for obj in objects
         ]
 

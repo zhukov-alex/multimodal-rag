@@ -3,7 +3,7 @@ import asyncio
 from multimodal_rag.document import Document, Chunk, ChunkGroup
 from multimodal_rag.embedder.types import TextEmbedder, ImageEmbedder
 from multimodal_rag.log_config import logger
-from multimodal_rag.utils.loader import load_image_bytes
+from multimodal_rag.utils.loader import load_image_base64
 
 DEFAULT_MAX_CONCURRENCY = 8
 
@@ -48,12 +48,12 @@ class EmbedderService:
         embeddings = await self.image_embedder.embed_texts([text])
         return embeddings[0]
 
-    async def embed_image_query(self, image_bytes: bytes) -> list[float]:
+    async def embed_image_query(self, image_base64: str) -> list[float]:
         if not self.image_embedder:
             raise RuntimeError("Image embedder is not configured.")
 
         logger.debug("Embedding image query")
-        embeddings = await self.image_embedder.embed_images([image_bytes])
+        embeddings = await self.image_embedder.embed_images([image_base64])
         return embeddings[0]
 
     async def _embed_one_document(self, doc: Document) -> None:
@@ -77,9 +77,8 @@ class EmbedderService:
 
         logger.debug("Embedding image document", extra={"path": path})
 
-        image_bytes = await load_image_bytes(path)
-        embedding = (await self.image_embedder.embed_images([image_bytes]))[0]
-
+        image_base64 = await load_image_base64(path)
+        embedding = (await self.image_embedder.embed_images([image_base64]))[0]
         caption = doc.content or ""
 
         for group in doc.chunk_groups:

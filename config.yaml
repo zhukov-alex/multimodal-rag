@@ -46,6 +46,7 @@ embedding:
     type: replicate
     model: clip
     input_size: 224
+    normalize: true
   batch_size: 64
 
 
@@ -54,7 +55,7 @@ storaging:
 
   weaviate:
     deployment: local
-    url: http://localhost:8080
+    url: localhost
     api_key: null
     secure: false
     port: 8080
